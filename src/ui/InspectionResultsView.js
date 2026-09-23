@@ -1,8 +1,9 @@
 import ByteViewIndex from "../inspection/byte-view/ByteViewIndex.js";
 import deriveMediaInfo from "../post-process/index.js";
 import { getActualBoxSize } from "../utils/box_size.js";
+import { getByteViewBoxKey } from "../utils/byte_view.js";
 import { fmtBytes } from "../utils/bytes.js";
-import { createStatElement, requireElementById } from "../utils/dom.js";
+import { requireElementById } from "../utils/dom.js";
 import {
   BoxTreeNodeView,
   ByteViewTab,
@@ -61,6 +62,7 @@ class InspectionResultsViewClass {
   #stack = [];
   /** @type {Array<import("isobmff-inspector").ParsedBox>} */
   #completedTopLevelBoxes = [];
+  #errorBoxIndex = -1;
   #abortCtrlr = new AbortController();
 
   constructor() {
@@ -100,6 +102,7 @@ class InspectionResultsViewClass {
     this.#clearDom();
     this.#stack.length = 0;
     this.#completedTopLevelBoxes.length = 0;
+    this.#errorBoxIndex = -1;
   }
 
   /**
@@ -306,46 +309,69 @@ class InspectionResultsViewClass {
       return;
     }
     const info = mediaInfo ?? deriveMediaInfo(boxes);
-    const videoTracks = info.tracks.filter((track) => track.kind === "video");
-    const codecs = info.tracks
-      .map((track) => `${track.kind}: ${track.codec}`)
-      .join(", ");
-    const resolutions = videoTracks
-      .map((track) => track.dimensions)
-      .filter((value) => value !== null)
-      .join(", ");
-    const frameRates = videoTracks
-      .map((track) => track.timing?.match(/nominal ([^ ]+ fps)/)?.[1] ?? null)
-      .filter((value) => value !== null)
-      .join(", ");
     const boxErrorMessages = getBoxErrorMessages(boxes);
     const boxErrorCount = countBoxErrors(boxes);
     const codecErrorCount = countCodecPayloadErrors(
       codecDetailsResults ?? [],
       boxErrorMessages,
     );
-    const facts = [
-      ["tracks", String(info.trackCount)],
-      ["codecs", codecs || "unknown"],
-      ["resolution", resolutions || "unknown"],
-      ["fps", frameRates || "unknown"],
-      ["fragmented", info.isFragmented ? "yes" : "no"],
-      [
-        "fragment size",
-        info.isFragmented ? formatLatestFragmentSize(boxes) : "not fragmented",
-      ],
-      ["errors", String(boxErrorCount + codecErrorCount)],
-    ];
-    this.#inspectionSummaryFacts.replaceChildren(
-      ...facts.map(([label, value]) =>
-        createStatElement(label, value, {
-          itemClass: "stat-card",
-          labelClass: "stat-label",
-          valueClass: "stat-value",
-        }),
+    const errorCount = boxErrorCount + codecErrorCount;
+    const errorBoxKeys = getBoxErrorKeys(boxes);
+    const rows = [
+      createSummaryRow("format", info.isFragmented ? "fragmented MP4" : "MP4"),
+      ...info.tracks.map((track, index) =>
+        createSummaryRow(
+          `track${String(index + 1).padStart(2, "0")}`,
+          formatTrackSummary(track),
+        ),
       ),
-    );
+      createSummaryRow(
+        "fragment size",
+        info.isFragmented
+          ? formatFragmentSizeStatistics(boxes)
+          : "not fragmented",
+      ),
+      createSummaryRow("errors", String(errorCount), errorCount > 1),
+    ];
+    const errorRow = rows[rows.length - 1];
+    if (errorBoxKeys.length) {
+      const previous = createErrorNavigationButton("←", "Previous error");
+      previous.addEventListener("click", () => {
+        this.#focusErrorBox(errorBoxKeys, -1);
+      });
+      const next = createErrorNavigationButton("→", "Next error");
+      next.addEventListener("click", () => {
+        this.#focusErrorBox(errorBoxKeys, 1);
+      });
+      errorRow.appendChild(previous);
+      errorRow.appendChild(next);
+    }
+    this.#inspectionSummaryFacts.replaceChildren(...rows);
     this.#inspectionSummary.hidden = false;
+  }
+
+  /**
+   * @param {string[]} errorBoxKeys
+   * @param {-1 | 1} direction
+   */
+  #focusErrorBox(errorBoxKeys, direction) {
+    this.#errorBoxIndex =
+      (this.#errorBoxIndex + direction + errorBoxKeys.length) %
+      errorBoxKeys.length;
+    const targetKey = errorBoxKeys[this.#errorBoxIndex];
+    const nodes = this.#wrapper.getElementsByClassName("box-node");
+    for (let index = 0; index < nodes.length; index++) {
+      const node = nodes[index];
+      if (!(node instanceof HTMLElement) || node.dataset.boxKey !== targetKey) {
+        continue;
+      }
+      openAncestorBoxes(node, this.#wrapper);
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (node.firstElementChild instanceof HTMLElement) {
+        node.firstElementChild.focus();
+      }
+      return;
+    }
   }
 
   /**
@@ -485,27 +511,114 @@ function countCodecPayloadErrors(results, boxErrorMessages) {
 }
 
 /**
+ * @param {import("../post-process/index.js").TrackInfo} track
+ */
+function formatTrackSummary(track) {
+  const frameRate = track.timing?.match(/nominal ([^ ]+ fps)/)?.[1] ?? null;
+  return [
+    track.kind,
+    track.codec,
+    track.dimensions,
+    frameRate,
+    track.audio,
+    track.language,
+  ]
+    .filter((value) => value !== null && value !== "")
+    .join(" · ");
+}
+
+/**
+ * @param {string} label
+ * @param {string} value
+ * @param {boolean} [isError]
+ */
+function createSummaryRow(label, value, isError = false) {
+  const row = document.createElement("div");
+  row.className = `inspection-summary-row${isError ? " is-error" : ""}`;
+  const labelElement = document.createElement("span");
+  labelElement.className = "inspection-summary-label";
+  labelElement.textContent = label;
+  const valueElement = document.createElement("span");
+  valueElement.className = "inspection-summary-value";
+  valueElement.textContent = value;
+  row.appendChild(labelElement);
+  row.appendChild(valueElement);
+  return row;
+}
+
+/**
+ * @param {string} text
+ * @param {string} label
+ */
+function createErrorNavigationButton(text, label) {
+  const button = document.createElement("button");
+  button.className = "inspection-error-nav";
+  button.type = "button";
+  button.textContent = text;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  return button;
+}
+
+/**
+ * @param {Array<import("isobmff-inspector").ParsedBox>} boxes
+ * @returns {string[]}
+ */
+function getBoxErrorKeys(boxes) {
+  const keys = [];
+  for (const box of boxes) {
+    if (box.issues.some((issue) => issue.severity === "error")) {
+      const key = getByteViewBoxKey(box);
+      if (key) {
+        keys.push(key);
+      }
+    }
+    keys.push(...getBoxErrorKeys(box.children ?? []));
+  }
+  return keys;
+}
+
+/**
+ * @param {HTMLElement} node
+ * @param {HTMLElement} root
+ */
+function openAncestorBoxes(node, root) {
+  let parent = node.parentElement;
+  while (parent && parent !== root) {
+    if (parent instanceof HTMLDetailsElement) {
+      parent.open = true;
+    }
+    parent = parent.parentElement;
+  }
+}
+
+/**
  * @param {Array<import("isobmff-inspector").ParsedBox>} boxes
  */
-function formatLatestFragmentSize(boxes) {
-  let fragmentStart = -1;
-  for (let index = boxes.length - 1; index >= 0; index--) {
-    if (boxes[index].type === "moof") {
-      fragmentStart = index;
-      break;
+function formatFragmentSizeStatistics(boxes) {
+  const sizes = [];
+  let currentSize = 0;
+  let inFragment = false;
+  for (const box of boxes) {
+    if (box.type === "moof") {
+      if (inFragment) {
+        sizes.push(currentSize);
+      }
+      currentSize = 0;
+      inFragment = true;
+    }
+    if (inFragment) {
+      currentSize += getActualBoxSize(box);
     }
   }
-  if (fragmentStart < 0) {
+  if (inFragment) {
+    sizes.push(currentSize);
+  }
+  if (!sizes.length) {
     return "awaiting media fragment";
   }
-  let size = 0;
-  for (let index = fragmentStart; index < boxes.length; index++) {
-    if (index > fragmentStart && boxes[index].type === "moof") {
-      break;
-    }
-    size += getActualBoxSize(boxes[index]);
-  }
-  return fmtBytes(size);
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  return `mean ${fmtBytes(total / sizes.length)} · min ${fmtBytes(Math.min(...sizes))} · max ${fmtBytes(Math.max(...sizes))}`;
 }
 
 const InspectionResultsView = new InspectionResultsViewClass();

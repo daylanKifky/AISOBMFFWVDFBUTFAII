@@ -370,8 +370,61 @@ summary:hover .box-type {
 }
 
 .inspection-summary-facts {
-  --stat-grid-columns: repeat(auto-fit, minmax(130px, 1fr));
+  display: grid;
+  gap: 4px;
   margin-bottom: 8px;
+}
+
+.inspection-summary-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 3px 0;
+  border-top: 0.5px solid var(--color-border-tertiary);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.inspection-summary-label {
+  flex: 0 0 92px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.inspection-summary-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inspection-summary-row.is-error .inspection-summary-label,
+.inspection-summary-row.is-error .inspection-summary-value {
+  color: var(--color-accent-red);
+  font-weight: 600;
+}
+
+.inspection-error-nav {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: 999px;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.inspection-error-nav:hover {
+  border-color: var(--color-accent-red);
+  color: var(--color-accent-red);
+}
+
+.inspection-error-nav:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .box-issue-badge {

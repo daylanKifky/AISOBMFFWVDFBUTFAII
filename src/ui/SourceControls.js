@@ -109,7 +109,6 @@ export function initializeFileDrop(onFile) {
  */
 export function initializeUrlInput(onUrl) {
   if (!("fetch" in window) || !("Uint8Array" in window)) {
-    requireElementById("choices-separator", HTMLElement).style.display = "none";
     requireElementById("choices-url-segment", HTMLElement).style.display =
       "none";
     return;
