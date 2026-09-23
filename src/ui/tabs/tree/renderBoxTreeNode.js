@@ -233,12 +233,35 @@ function getBoxNodeClass(baseClass, box) {
  * @param {RenderedBox} box
  */
 function assignBoxNodeMetadata(element, box) {
+  element.dataset.boxType = box.type;
+  element.style.setProperty("--box-row-color", getBoxRowColor(box.type));
   const key = getByteViewBoxKey(box);
   if (key) {
     element.dataset.boxKey = key;
   } else {
     delete element.dataset.boxKey;
   }
+}
+
+/**
+ * @param {string} type
+ */
+function getBoxRowColor(type) {
+  /** @type {Record<string, string>} */
+  const specialColors = {
+    moof: "#d4d7dc",
+    mdat: "#fafafa",
+    ftyp: "#95c9f7",
+    moov: "#f6dc7c",
+  };
+  if (type in specialColors) {
+    return specialColors[type];
+  }
+  let hash = 0;
+  for (let index = 0; index < type.length; index++) {
+    hash = (hash * 31 + type.charCodeAt(index)) % 360;
+  }
+  return `hsl(${hash} 62% 72%)`;
 }
 
 /**

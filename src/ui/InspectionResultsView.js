@@ -119,6 +119,7 @@ class InspectionResultsViewClass {
    */
   initializeForNewRender() {
     this.clear();
+    this.#results.inert = false;
     this.#results.setAttribute("aria-busy", "true");
     this.#setByteViewAvailability(false, null);
     this.#tabs.hidden = false;

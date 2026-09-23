@@ -1,5 +1,4 @@
 import InspectionResultsView from "../ui/InspectionResultsView.js";
-import { setInspectionSource } from "../ui/InspectionSourceElement.js";
 import {
   hideSegmentChooser,
   showDashSegmentChooser,
@@ -119,9 +118,6 @@ class InspectionCoordinatorClass {
     switch (event.type) {
       case "notice":
         InspectionResultsView.renderNotice(event.notice);
-        break;
-      case "source":
-        setInspectionSource(event.source);
         break;
       case "chooser-hide":
         hideSegmentChooser();
