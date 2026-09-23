@@ -1719,6 +1719,116 @@ export function splitLengthPrefixedNals(sampleBytes, lengthSize) {
 }
 
 /**
+ * Validate SEI message headers without retaining another copy of the NAL.
+ *
+ * @param {Uint8Array} nal
+ * @param {"avc" | "hevc"} codecFamily
+ * @returns {string[]}
+ */
+export function findSeiPayloadIssues(nal, codecFamily) {
+  const nalHeaderSize = codecFamily === "avc" ? 1 : 2;
+  const codecLabel = codecFamily === "avc" ? "AVC" : "HEVC";
+  if (nal.length <= nalHeaderSize) {
+    return [`${codecLabel} SEI NAL has no RBSP payload`];
+  }
+
+  const reader = createRbspReader(nal, nalHeaderSize);
+  while (reader.offset < nal.length) {
+    if (hasOnlyRbspTrailingBits(reader)) {
+      return [];
+    }
+    const payloadType = readSeiValue(reader);
+    if (payloadType === null) {
+      return [`${codecLabel} SEI payload type is truncated`];
+    }
+    const payloadSize = readSeiValue(reader);
+    if (payloadSize === null) {
+      return [`${codecLabel} SEI type ${payloadType} size is truncated`];
+    }
+    const available = skipRbspBytes(reader, payloadSize);
+    if (available < payloadSize) {
+      return [
+        `${codecLabel} SEI type ${payloadType} size ${payloadSize} truncated at ${available}`,
+      ];
+    }
+  }
+  return [];
+}
+
+/**
+ * @param {Uint8Array} bytes
+ * @param {number} offset
+ */
+function createRbspReader(bytes, offset) {
+  return { bytes, offset, zeroCount: 0 };
+}
+
+/**
+ * @param {{ bytes: Uint8Array, offset: number, zeroCount: number }} reader
+ * @returns {number | null}
+ */
+function readRbspByte(reader) {
+  while (reader.offset < reader.bytes.length) {
+    const value = reader.bytes[reader.offset++];
+    if (reader.zeroCount >= 2 && value === 0x03) {
+      reader.zeroCount = 0;
+      continue;
+    }
+    reader.zeroCount = value === 0x00 ? reader.zeroCount + 1 : 0;
+    return value;
+  }
+  return null;
+}
+
+/**
+ * @param {{ bytes: Uint8Array, offset: number, zeroCount: number }} reader
+ */
+function readSeiValue(reader) {
+  let value = 0;
+  while (true) {
+    const byte = readRbspByte(reader);
+    if (byte === null) {
+      return null;
+    }
+    value += byte;
+    if (byte !== 0xff) {
+      return value;
+    }
+  }
+}
+
+/**
+ * @param {{ bytes: Uint8Array, offset: number, zeroCount: number }} reader
+ * @param {number} count
+ */
+function skipRbspBytes(reader, count) {
+  let skipped = 0;
+  while (skipped < count && readRbspByte(reader) !== null) {
+    skipped++;
+  }
+  return skipped;
+}
+
+/**
+ * @param {{ bytes: Uint8Array, offset: number, zeroCount: number }} reader
+ */
+function hasOnlyRbspTrailingBits(reader) {
+  const copy = { ...reader };
+  if (readRbspByte(copy) !== 0x80) {
+    return false;
+  }
+  while (true) {
+    const byte = readRbspByte(copy);
+    if (byte === null) {
+      return true;
+    }
+    if (byte !== 0x00) {
+      return false;
+    }
+  }
+}
+
+/**
  * @param {import("isobmff-inspector").ParsedBox} box
  * @param {string} key
  */

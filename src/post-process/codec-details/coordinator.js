@@ -7,6 +7,7 @@ import {
 import {
   buildFragmentSampleLocations,
   buildRegularTrackSampleLocations,
+  findSeiPayloadIssues,
   getTrackSampleEntries,
   getTrexDefaults,
   parseAvcConfigBox,
@@ -487,7 +488,7 @@ export default class CodecDetailsCoordinator {
 
     const summary = createPendingSampleSummary();
     for (const nal of split.nals) {
-      this.#consumeSampleNal(trackState, summary, nal);
+      this.#consumeSampleNal(trackState, sampleIndex, summary, nal);
       if (trackState.nalCount >= MAX_ANALYZED_NALS) {
         break;
       }
@@ -556,7 +557,7 @@ export default class CodecDetailsCoordinator {
         }
 
         const nal = concatChunks(currentNalChunks, currentNalLength);
-        this.#consumeSampleNal(trackState, summary, nal);
+        this.#consumeSampleNal(trackState, sampleIndex, summary, nal);
         currentNalLength = null;
         currentNalChunks = [];
         currentNalReceived = 0;
@@ -583,10 +584,11 @@ export default class CodecDetailsCoordinator {
 
   /**
    * @param {TrackState} trackState
+   * @param {number} sampleIndex
    * @param {ReturnType<typeof createPendingSampleSummary>} summary
    * @param {Uint8Array} nal
    */
-  #consumeSampleNal(trackState, summary, nal) {
+  #consumeSampleNal(trackState, sampleIndex, summary, nal) {
     trackState.nalCount++;
     if (trackState.codecFamily === "avc") {
       const type = nal[0] & 0x1f;
@@ -606,6 +608,9 @@ export default class CodecDetailsCoordinator {
         (type === 1 || type === 2 || type === 5)
       ) {
         summary.sampleClass = parseAvcSliceType(nal);
+      }
+      if (type === 6) {
+        this.#addSeiIssues(trackState, sampleIndex, nal);
       }
       return;
     }
@@ -627,6 +632,20 @@ export default class CodecDetailsCoordinator {
     }
     if (type === 32 || type === 33 || type === 34) {
       summary.sampleHasParameterSets = true;
+    }
+    if (type === 39 || type === 40) {
+      this.#addSeiIssues(trackState, sampleIndex, nal);
+    }
+  }
+
+  /**
+   * @param {TrackState} trackState
+   * @param {number} sampleIndex
+   * @param {Uint8Array} nal
+   */
+  #addSeiIssues(trackState, sampleIndex, nal) {
+    for (const issue of findSeiPayloadIssues(nal, trackState.codecFamily)) {
+      trackState.issues.push(`sample ${sampleIndex}: ${issue}`);
     }
   }
 
