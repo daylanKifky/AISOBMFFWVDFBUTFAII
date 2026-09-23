@@ -316,18 +316,98 @@ summary:hover .box-type {
   padding-right: 4px;
 }
 
-.box-issue-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-accent-red);
-  flex-shrink: 0;
-  margin-left: 2px;
-  margin-bottom: 1px;
+.inspection-summary {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  margin: 0 0 12px;
+  padding: 8px 10px 0;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-lg);
+  background: color-mix(
+    in srgb,
+    var(--color-background-primary) 94%,
+    var(--color-mix-surface)
+  );
+  box-shadow: var(--shadow-panel);
 }
 
-.box-issue-dot.warn {
-  background: var(--color-accent-yellow);
+.inspection-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+#collapse-all-boxes {
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+#collapse-all-boxes:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-text-tertiary);
+}
+
+#collapse-all-boxes:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.inspection-summary-facts {
+  --stat-grid-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin-bottom: 8px;
+}
+
+.box-issue-badge {
+  padding: 1px 5px;
+  border: 0.5px solid
+    color-mix(
+      in srgb,
+      var(--color-accent-red) 65%,
+      var(--color-border-secondary)
+    );
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--color-accent-red) 12%,
+    var(--color-background-secondary)
+  );
+  color: var(--color-accent-red);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.box-issue-badge.warn {
+  border-color: color-mix(
+    in srgb,
+    var(--color-accent-yellow) 65%,
+    var(--color-border-secondary)
+  );
+  background: color-mix(
+    in srgb,
+    var(--color-accent-yellow) 12%,
+    var(--color-background-secondary)
+  );
+  color: var(--color-accent-yellow);
 }
 
 .box-body {

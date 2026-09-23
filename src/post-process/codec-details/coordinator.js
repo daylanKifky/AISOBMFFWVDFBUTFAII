@@ -95,7 +95,7 @@ const HEVC_NAL_TYPE_NAMES = new Map([
 export default class CodecDetailsCoordinator {
   #supplementalBoxes;
   #trexDefaults;
-  /** @type {{ payloadStart: number, payloadEnd: number | null } | null} */
+  /** @type {{ payloadStart: number, payloadEnd: number | null, issues: string[] } | null} */
   #activeMdat = null;
   /** @type {Array<import("isobmff-inspector").ParsedBox>} */
   #pendingMoofs = [];
@@ -138,6 +138,7 @@ export default class CodecDetailsCoordinator {
     this.#activeMdat = {
       payloadStart,
       payloadEnd,
+      issues: [],
     };
     if (this.#pendingMoofs.length > 0) {
       for (const moof of this.#pendingMoofs) {
@@ -164,6 +165,9 @@ export default class CodecDetailsCoordinator {
       return;
     }
     if (box.type === "mdat") {
+      for (const message of this.#activeMdat?.issues ?? []) {
+        box.issues.push({ severity: "error", message });
+      }
       const payloadStart = box.offset + box.headerSize;
       const payloadEnd = box.offset + box.actualSize;
       if (payloadEnd > payloadStart) {
@@ -645,7 +649,9 @@ export default class CodecDetailsCoordinator {
    */
   #addSeiIssues(trackState, sampleIndex, nal) {
     for (const issue of findSeiPayloadIssues(nal, trackState.codecFamily)) {
-      trackState.issues.push(`sample ${sampleIndex}: ${issue}`);
+      const message = `sample ${sampleIndex}: ${issue}`;
+      trackState.issues.push(message);
+      this.#activeMdat?.issues.push(message);
     }
   }
 

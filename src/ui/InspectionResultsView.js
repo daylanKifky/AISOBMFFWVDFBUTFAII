@@ -1,5 +1,8 @@
 import ByteViewIndex from "../inspection/byte-view/ByteViewIndex.js";
-import { requireElementById } from "../utils/dom.js";
+import deriveMediaInfo from "../post-process/index.js";
+import { getActualBoxSize } from "../utils/box_size.js";
+import { fmtBytes } from "../utils/bytes.js";
+import { createStatElement, requireElementById } from "../utils/dom.js";
 import {
   BoxTreeNodeView,
   ByteViewTab,
@@ -10,8 +13,6 @@ import {
   renderTreePositionMap,
   switchToTab,
 } from "./tabs/index.js";
-
-const AUTO_OPEN_BOX_LIMIT = 200;
 
 /**
  * Handle the central UI around result presentation, both wile parsing (where
@@ -27,6 +28,15 @@ class InspectionResultsViewClass {
   #results = requireElementById("results", HTMLElement);
   #resultNotices = requireElementById("result-notices", HTMLElement);
   #boxesPanel = requireElementById("tab-boxes", HTMLElement);
+  #inspectionSummary = requireElementById("inspection-summary", HTMLElement);
+  #inspectionSummaryFacts = requireElementById(
+    "inspection-summary-facts",
+    HTMLElement,
+  );
+  #collapseAllBoxes = requireElementById(
+    "collapse-all-boxes",
+    HTMLButtonElement,
+  );
   #infoPanel = requireElementById("tab-info", HTMLElement);
   #wrapper = requireElementById("file-description", HTMLElement);
   #byteTabButton = requireElementById("tab-button-bytes", HTMLButtonElement);
@@ -49,8 +59,21 @@ class InspectionResultsViewClass {
   #sampleView = requireElementById("sample-view", HTMLElement);
   /** @type {Array<import("./tabs/index.js").BoxTreeNodeView>} */
   #stack = [];
-  #renderedBoxCount = 0;
+  /** @type {Array<import("isobmff-inspector").ParsedBox>} */
+  #completedTopLevelBoxes = [];
   #abortCtrlr = new AbortController();
+
+  constructor() {
+    this.#collapseAllBoxes.addEventListener("click", () => {
+      const boxes = this.#wrapper.getElementsByClassName("box-node");
+      for (let index = 0; index < boxes.length; index++) {
+        const box = boxes[index];
+        if (box instanceof HTMLDetailsElement) {
+          box.open = false;
+        }
+      }
+    });
+  }
 
   /**
    * @param {boolean} isLoading
@@ -76,7 +99,7 @@ class InspectionResultsViewClass {
     this.#abortCtrlr = new AbortController();
     this.#clearDom();
     this.#stack.length = 0;
-    this.#renderedBoxCount = 0;
+    this.#completedTopLevelBoxes.length = 0;
   }
 
   /**
@@ -101,16 +124,14 @@ class InspectionResultsViewClass {
    */
   renderBoxTreeStart(box, depth, path) {
     this.#stack.length = depth;
-    const shouldAutoOpen = this.#renderedBoxCount < AUTO_OPEN_BOX_LIMIT;
-    this.#renderedBoxCount++;
     const view =
       depth === 0
         ? new BoxTreeNodeView(box, {
-            autoOpen: shouldAutoOpen,
+            autoOpen: false,
             shallow: true,
           })
         : this.#stack[depth - 1]?.appendChildBox(box, {
-            autoOpen: shouldAutoOpen,
+            autoOpen: false,
           });
     if (!view) {
       throw new Error(`missing parent for ${path.join("/")}`);
@@ -145,6 +166,10 @@ class InspectionResultsViewClass {
     }
 
     current.updateBox(box);
+    if (depth === 0) {
+      this.#completedTopLevelBoxes.push(box);
+      this.#renderInspectionSummary();
+    }
     return true;
   }
 
@@ -153,9 +178,11 @@ class InspectionResultsViewClass {
    */
   appendStandaloneTopLevelBox(box) {
     const view = new BoxTreeNodeView(box, {
-      autoOpen: true,
+      autoOpen: false,
     });
     this.#wrapper.appendChild(view.element);
+    this.#completedTopLevelBoxes.push(box);
+    this.#renderInspectionSummary();
   }
 
   /**
@@ -195,6 +222,10 @@ class InspectionResultsViewClass {
       ? { supplementalBoxes: supplementalMetadata.boxes }
       : {};
     const projections = options?.projections ?? null;
+    this.#renderInspectionSummary(
+      projections?.mediaInfo ?? null,
+      options?.codecDetailsResults ?? null,
+    );
     renderMediaInfo(topLevelBoxes, {
       ...renderOptions,
       mediaInfo: projections?.mediaInfo,
@@ -239,6 +270,8 @@ class InspectionResultsViewClass {
 
   #clearDom() {
     this.#resultNotices.replaceChildren();
+    this.#inspectionSummary.hidden = true;
+    this.#inspectionSummaryFacts.replaceChildren();
     this.#restorePanelRoot(this.#boxesPanel, this.#wrapper);
     this.#restorePanelRoot(this.#bytePanel, this.#byteView);
     this.#restorePanelRoot(this.#infoPanel, this.#mediaInfo);
@@ -258,6 +291,61 @@ class InspectionResultsViewClass {
     this.#results.inert = false;
     this.#results.setAttribute("aria-busy", "false");
     this.#setByteViewAvailability(false, null);
+  }
+
+  /**
+   * @param {import("../post-process/index.js").MediaInfo | null} [mediaInfo]
+   * @param {Array<any> | null} [codecDetailsResults]
+   */
+  #renderInspectionSummary(mediaInfo = null, codecDetailsResults = null) {
+    const boxes = this.#completedTopLevelBoxes;
+    if (
+      !boxes.some((box) => box.type === "ftyp") ||
+      !boxes.some((box) => box.type === "moov")
+    ) {
+      return;
+    }
+    const info = mediaInfo ?? deriveMediaInfo(boxes);
+    const videoTracks = info.tracks.filter((track) => track.kind === "video");
+    const codecs = info.tracks
+      .map((track) => `${track.kind}: ${track.codec}`)
+      .join(", ");
+    const resolutions = videoTracks
+      .map((track) => track.dimensions)
+      .filter((value) => value !== null)
+      .join(", ");
+    const frameRates = videoTracks
+      .map((track) => track.timing?.match(/nominal ([^ ]+ fps)/)?.[1] ?? null)
+      .filter((value) => value !== null)
+      .join(", ");
+    const boxErrorMessages = getBoxErrorMessages(boxes);
+    const boxErrorCount = countBoxErrors(boxes);
+    const codecErrorCount = countCodecPayloadErrors(
+      codecDetailsResults ?? [],
+      boxErrorMessages,
+    );
+    const facts = [
+      ["tracks", String(info.trackCount)],
+      ["codecs", codecs || "unknown"],
+      ["resolution", resolutions || "unknown"],
+      ["fps", frameRates || "unknown"],
+      ["fragmented", info.isFragmented ? "yes" : "no"],
+      [
+        "fragment size",
+        info.isFragmented ? formatLatestFragmentSize(boxes) : "not fragmented",
+      ],
+      ["errors", String(boxErrorCount + codecErrorCount)],
+    ];
+    this.#inspectionSummaryFacts.replaceChildren(
+      ...facts.map(([label, value]) =>
+        createStatElement(label, value, {
+          itemClass: "stat-card",
+          labelClass: "stat-label",
+          valueClass: "stat-value",
+        }),
+      ),
+    );
+    this.#inspectionSummary.hidden = false;
   }
 
   /**
@@ -307,6 +395,25 @@ class InspectionResultsViewClass {
    * @param {HTMLElement} root
    */
   #restorePanelRoot(panel, root) {
+    if (panel === this.#boxesPanel) {
+      if (this.#inspectionSummary.parentElement !== panel) {
+        panel.appendChild(this.#inspectionSummary);
+      }
+      if (root.parentElement !== panel) {
+        panel.appendChild(root);
+      }
+      const children = panel.children;
+      for (let index = children.length - 1; index >= 0; index--) {
+        const child = children[index];
+        if (child !== this.#inspectionSummary && child !== root) {
+          panel.removeChild(child);
+        }
+      }
+      root.replaceChildren();
+      panel.hidden = false;
+      panel.classList.add("active");
+      return;
+    }
     if (root.parentElement !== panel) {
       panel.replaceChildren(root);
     } else {
@@ -319,6 +426,86 @@ class InspectionResultsViewClass {
     panel.hidden = panel !== this.#boxesPanel;
     panel.classList.toggle("active", panel === this.#boxesPanel);
   }
+}
+
+/**
+ * @param {Array<import("isobmff-inspector").ParsedBox>} boxes
+ */
+function countBoxErrors(boxes) {
+  let count = 0;
+  for (const box of boxes) {
+    count += box.issues.filter((issue) => issue.severity === "error").length;
+    count += countBoxErrors(box.children ?? []);
+  }
+  return count;
+}
+
+/**
+ * @param {Array<import("isobmff-inspector").ParsedBox>} boxes
+ */
+function getBoxErrorMessages(boxes) {
+  const messages = new Set();
+  collectBoxErrorMessages(boxes, messages);
+  return messages;
+}
+
+/**
+ * @param {Array<import("isobmff-inspector").ParsedBox>} boxes
+ * @param {Set<string>} messages
+ */
+function collectBoxErrorMessages(boxes, messages) {
+  for (const box of boxes) {
+    for (const issue of box.issues) {
+      if (issue.severity === "error") {
+        messages.add(issue.message);
+      }
+    }
+    collectBoxErrorMessages(box.children ?? [], messages);
+  }
+}
+
+/**
+ * @param {Array<any>} results
+ * @param {Set<string>} boxErrorMessages
+ */
+function countCodecPayloadErrors(results, boxErrorMessages) {
+  let count = 0;
+  for (const result of results) {
+    for (const issue of result.issues ?? []) {
+      if (
+        issue.includes("SEI") &&
+        issue.includes("truncated") &&
+        !boxErrorMessages.has(issue)
+      ) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * @param {Array<import("isobmff-inspector").ParsedBox>} boxes
+ */
+function formatLatestFragmentSize(boxes) {
+  let fragmentStart = -1;
+  for (let index = boxes.length - 1; index >= 0; index--) {
+    if (boxes[index].type === "moof") {
+      fragmentStart = index;
+      break;
+    }
+  }
+  if (fragmentStart < 0) {
+    return "awaiting media fragment";
+  }
+  let size = 0;
+  for (let index = fragmentStart; index < boxes.length; index++) {
+    if (index > fragmentStart && boxes[index].type === "moof") {
+      break;
+    }
+    size += getActualBoxSize(boxes[index]);
+  }
+  return fmtBytes(size);
 }
 
 const InspectionResultsView = new InspectionResultsViewClass();

@@ -53,19 +53,17 @@ export default function renderBoxTreeNode(box, options = {}) {
     hasValues || hasChildren || box.description || box.issues?.length;
   const autoOpen = options.autoOpen ?? shouldAutoOpenBox(box);
 
-  const makeDot = () => {
+  const makeIssueBadge = () => {
     if (!box.issues?.length) {
       return null;
     }
-    const dot = el("span");
+    const badge = el("span");
     const isWarnOnly = box.issues.every((i) => i.severity === "warning");
-    dot.className = `box-issue-dot${isWarnOnly ? " warn" : ""}`;
-    dot.setAttribute("role", "img");
-    dot.setAttribute(
-      "aria-label",
-      isWarnOnly ? "Box has warnings" : "Box has errors",
-    );
-    return dot;
+    const label = getIssueBadgeLabel(box.issues[0]?.message ?? "", isWarnOnly);
+    badge.className = `box-issue-badge${isWarnOnly ? " warn" : ""}`;
+    badge.textContent = label;
+    badge.setAttribute("aria-label", `Box has ${label}`);
+    return badge;
   };
 
   const makeHeader = () => {
@@ -87,9 +85,9 @@ export default function renderBoxTreeNode(box, options = {}) {
       sizeSpan.title = `actual ${fmtBytes(getActualBoxSize(box))}, announced ${fmtBytes(getAdvertisedBoxSize(box))}`;
     }
     header.appendChild(sizeSpan);
-    const dot = makeDot();
-    if (dot) {
-      header.appendChild(dot);
+    const badge = makeIssueBadge();
+    if (badge) {
+      header.appendChild(badge);
     }
     return header;
   };
@@ -197,6 +195,27 @@ export default function renderBoxTreeNode(box, options = {}) {
   }
 
   return { element: det, childContainer };
+}
+
+/**
+ * @param {string} message
+ * @param {boolean} isWarning
+ */
+function getIssueBadgeLabel(message, isWarning) {
+  if (isWarning) {
+    return "warning";
+  }
+  const lowerCaseMessage = message.toLowerCase();
+  if (
+    lowerCaseMessage.includes("truncated") ||
+    lowerCaseMessage.includes("incomplete")
+  ) {
+    return "truncated error";
+  }
+  if (lowerCaseMessage.includes("invalid")) {
+    return "invalid error";
+  }
+  return "parse error";
 }
 
 /**
