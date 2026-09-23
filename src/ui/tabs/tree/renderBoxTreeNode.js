@@ -135,7 +135,7 @@ export default function renderBoxTreeNode(box, options = {}) {
   };
 
   if (!hasContent && !box.children) {
-    const div = el("div", "leaf-box box-node");
+    const div = el("div", getBoxNodeClass("leaf-box box-node", box));
     assignBoxNodeMetadata(div, box);
     div.tabIndex = -1;
     const caret = el("span", "box-caret");
@@ -147,7 +147,7 @@ export default function renderBoxTreeNode(box, options = {}) {
   }
 
   const det = document.createElement("details");
-  det.className = "box-node";
+  det.className = getBoxNodeClass("box-node", box);
   assignBoxNodeMetadata(det, box);
   det.open = autoOpen;
 
@@ -216,6 +216,16 @@ function getIssueBadgeLabel(message, isWarning) {
     return "invalid error";
   }
   return "parse error";
+}
+
+/**
+ * @param {string} baseClass
+ * @param {RenderedBox} box
+ */
+function getBoxNodeClass(baseClass, box) {
+  return box.issues?.some((issue) => issue.severity === "error")
+    ? `${baseClass} has-error`
+    : baseClass;
 }
 
 /**

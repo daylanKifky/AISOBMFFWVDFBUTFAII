@@ -405,6 +405,16 @@ summary:hover .box-type {
   font-weight: 600;
 }
 
+.inspection-summary-row.is-error {
+  padding: 4px 6px;
+  border-radius: var(--border-radius-md);
+  background: color-mix(
+    in srgb,
+    var(--color-accent-red) 12%,
+    var(--color-background-secondary)
+  );
+}
+
 .inspection-error-nav {
   flex: 0 0 auto;
   min-width: 22px;
@@ -461,6 +471,16 @@ summary:hover .box-type {
     var(--color-background-secondary)
   );
   color: var(--color-accent-yellow);
+}
+
+.box-node.has-error > .box-node-header,
+.leaf-box.has-error {
+  border-radius: var(--border-radius-md);
+  background: color-mix(
+    in srgb,
+    var(--color-accent-red) 12%,
+    var(--color-background-secondary)
+  );
 }
 
 .box-body {

@@ -94,6 +94,15 @@ class InspectionResultsViewClass {
   }
 
   /**
+   * Keep parsed boxes available after a user cancels an active stream.
+   */
+  finishPartialRender() {
+    this.#results.setAttribute("aria-busy", "false");
+    this.#tabs.classList.remove("is-reserved");
+    this.#tabs.classList.add("is-visible");
+  }
+
+  /**
    * Clear the whole inspection UI.
    */
   clear() {
@@ -331,15 +340,15 @@ class InspectionResultsViewClass {
           ? formatFragmentSizeStatistics(boxes)
           : "not fragmented",
       ),
-      createSummaryRow("errors", String(errorCount), errorCount > 1),
+      createSummaryRow("errors", String(errorCount), errorCount > 0),
     ];
     const errorRow = rows[rows.length - 1];
     if (errorBoxKeys.length) {
-      const previous = createErrorNavigationButton("←", "Previous error");
+      const previous = createErrorNavigationButton("⏶", "Previous error");
       previous.addEventListener("click", () => {
         this.#focusErrorBox(errorBoxKeys, -1);
       });
-      const next = createErrorNavigationButton("→", "Next error");
+      const next = createErrorNavigationButton("⏷", "Next error");
       next.addEventListener("click", () => {
         this.#focusErrorBox(errorBoxKeys, 1);
       });

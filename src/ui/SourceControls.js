@@ -159,4 +159,11 @@ export function initializeUrlInput(onUrl) {
       );
     });
   }
+
+  const requestedUrl = new URLSearchParams(window.location.search).get(
+    "inspect-url",
+  );
+  if (requestedUrl) {
+    triggerInspect(requestedUrl);
+  }
 }

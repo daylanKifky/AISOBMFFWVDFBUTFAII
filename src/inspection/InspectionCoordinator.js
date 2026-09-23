@@ -1,8 +1,5 @@
 import InspectionResultsView from "../ui/InspectionResultsView.js";
-import {
-  clearInspectionSource,
-  setInspectionSource,
-} from "../ui/InspectionSourceElement.js";
+import { setInspectionSource } from "../ui/InspectionSourceElement.js";
 import {
   hideSegmentChooser,
   showDashSegmentChooser,
@@ -76,8 +73,7 @@ class InspectionCoordinatorClass {
           return;
         }
         hideSegmentChooser();
-        clearInspectionSource();
-        InspectionResultsView.clear();
+        InspectionResultsView.finishPartialRender();
         InspectionResultsView.setLoading(false);
         ProgressBar.bindAbortController(null);
         this.#progressSession = null;
